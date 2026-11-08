@@ -645,6 +645,25 @@ export async function buildInventory(
     });
   }
 
+  // User-level servers switched off for all projects live in the stash file.
+  const stash = await loadJson(paths.mcpStash, warnings);
+  const stashServers = isObject(stash) && isObject(stash.servers) ? stash.servers : {};
+  for (const name of Object.keys(stashServers)) {
+    if (mcpServers.some((server) => server.id === name)) {
+      continue;
+    }
+    mcpServers.push({
+      id: name,
+      name,
+      scope: 'user',
+      sourceFile: paths.mcpStash,
+      transport: transportOf(stashServers[name]),
+      disabled: true,
+      needsAuth: false,
+      stashed: true,
+    });
+  }
+
   // Local MCP servers live on each matching project entry; union them.
   const localNames = new Set<string>();
   for (const entry of projectEntries) {

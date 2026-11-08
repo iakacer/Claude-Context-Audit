@@ -1,7 +1,13 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { ClaudePaths, findTranscriptDir } from './core/paths';
-import { setMcpDisabled, setPluginOverride } from './core/writer';
+import {
+  restoreUserMcp,
+  setMcpDisabled,
+  setPluginGlobal,
+  setPluginOverride,
+  stashUserMcp,
+} from './core/writer';
 import { loadState } from './state';
 import { InventoryStatusBar } from './statusBar';
 import { InventoryDecorations, InventoryNode, InventoryProvider } from './tree';
@@ -213,7 +219,8 @@ function activateInner(context: vscode.ExtensionContext): void {
       node &&
       node.kind === 'mcp' &&
       node.mcpId &&
-      node.mcpDisabled === !disabled
+      node.mcpDisabled === !disabled &&
+      !node.contextValue?.startsWith('mcp:stashed')
     ) {
       return node;
     }
@@ -223,7 +230,8 @@ function activateInner(context: vscode.ExtensionContext): void {
         (candidate) =>
           candidate.kind === 'mcp' &&
           candidate.mcpId !== undefined &&
-          candidate.mcpDisabled === !disabled,
+          candidate.mcpDisabled === !disabled &&
+          !candidate.contextValue?.startsWith('mcp:stashed'),
       );
     return pickNode(
       candidates,
@@ -372,6 +380,59 @@ function activateInner(context: vscode.ExtensionContext): void {
     await requestRefresh();
     await vscode.window.showInformationMessage(PLUGIN_WRITE_MESSAGE);
   });
+
+  registerCommand('claudeInventory.disableMcpGlobal', async (arg) => {
+    const node = asNode(arg);
+    if (!node?.mcpId || !node.contextValue?.startsWith('mcp:on:user')) {
+      await vscode.window.showInformationMessage(
+        'Only user-level MCP servers can be disabled for all projects. For a plugin server, disable the plugin; claude.ai connectors are managed on claude.ai.',
+      );
+      return;
+    }
+    const choice = await vscode.window.showWarningMessage(
+      `Disable "${node.mcpId}" in ALL projects? Its config moves to ~/.claude/mcp-disabled-stash.json and can be restored from this view.`,
+      { modal: true },
+      'Disable everywhere',
+    );
+    if (choice === undefined) {
+      return;
+    }
+    await stashUserMcp(paths, node.mcpId);
+    await requestRefresh();
+    await vscode.window.showInformationMessage(MCP_WRITE_MESSAGE);
+  });
+
+  registerCommand('claudeInventory.enableMcpGlobal', async (arg) => {
+    const node = asNode(arg);
+    if (!node?.mcpId || !node.contextValue?.startsWith('mcp:stashed')) {
+      return;
+    }
+    await restoreUserMcp(paths, node.mcpId);
+    await requestRefresh();
+    await vscode.window.showInformationMessage(MCP_WRITE_MESSAGE);
+  });
+
+  async function setPluginEverywhere(arg: unknown, value: boolean): Promise<void> {
+    const node = asNode(arg);
+    if (node?.kind !== 'plugin' || node.pluginKey === undefined) {
+      return;
+    }
+    // A project override would hide the change, so drop it too.
+    const projectPath = currentProjectPath();
+    if (projectPath && node.hasLocalOverride) {
+      await setPluginOverride(projectPath, node.pluginKey, null);
+    }
+    await setPluginGlobal(paths, node.pluginKey, value);
+    await requestRefresh();
+    await vscode.window.showInformationMessage(
+      `${PLUGIN_WRITE_MESSAGE} Changed for all projects${
+        node.hasLocalOverride ? ' (the override in this project was removed)' : ''
+      }.`,
+    );
+  }
+
+  registerCommand('claudeInventory.disablePluginGlobal', (arg) => setPluginEverywhere(arg, false));
+  registerCommand('claudeInventory.enablePluginGlobal', (arg) => setPluginEverywhere(arg, true));
 
   registerCommand('claudeInventory.openSource', async (arg) => {
     const node = asNode(arg);

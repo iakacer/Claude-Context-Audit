@@ -401,7 +401,12 @@ function buildMcpNode(ctx: BuildContext, server: McpServer): InventoryNode {
   const tokens = serverMeasuredTokens(ctx, server.id);
   const usageEntry = ctx.state.usage.mcp[server.id];
   const unused = !server.disabled && isUnused(usageEntry, ctx.state.usage);
-  const base = server.disabled ? 'mcp:off' : 'mcp:on';
+  let base = server.disabled ? 'mcp:off' : 'mcp:on';
+  if (server.stashed) {
+    base = 'mcp:stashed';
+  } else if (server.scope === 'user') {
+    base += ':user';
+  }
   const contextValue = server.sourceFile ? `${base}:source` : base;
 
   const tooltip: string[] = [
@@ -418,7 +423,9 @@ function buildMcpNode(ctx: BuildContext, server: McpServer): InventoryNode {
   if (server.transport) {
     tooltip.push(`Transport: ${server.transport}`);
   }
-  tooltip.push(`State: ${server.disabled ? 'disabled for this project' : 'enabled'}`);
+  tooltip.push(
+    `State: ${server.stashed ? 'disabled for all projects (config parked in the stash file)' : server.disabled ? 'disabled for this project' : 'enabled'}`,
+  );
   if (server.needsAuth) {
     tooltip.push('Needs authentication.');
   }
@@ -442,13 +449,15 @@ function buildMcpNode(ctx: BuildContext, server: McpServer): InventoryNode {
     label: shortMcpLabel(server.id),
     badge: scopeBadge(server.scope),
     tone: server.disabled ? 'off' : unused ? 'warn' : undefined,
-    description: describeItem({
-      tokens,
-      usage: usageEntry,
-      unused,
-      disabled: server.disabled,
-      windowDays: ctx.state.usage.windowDays,
-    }),
+    description: server.stashed
+      ? 'off · all projects'
+      : describeItem({
+          tokens,
+          usage: usageEntry,
+          unused,
+          disabled: server.disabled,
+          windowDays: ctx.state.usage.windowDays,
+        }),
     icon: itemIcon('mcp', {
       disabled: server.disabled,
       unused,

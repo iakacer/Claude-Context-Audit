@@ -1,6 +1,8 @@
 export type Scope = 'user'|'local'|'project'|'plugin'|'claudeai'|'builtin';
 export interface McpServer { id: string; name: string; scope: Scope; pluginKey?: string;
-  sourceFile?: string; transport?: string; disabled: boolean; needsAuth: boolean; }
+  sourceFile?: string; transport?: string; disabled: boolean; needsAuth: boolean;
+  /** Switched off for all projects: config parked in the stash file, not in ~/.claude.json. */
+  stashed?: boolean; }
 export interface SkillOrAgent { kind: 'skill'|'agent'; name: string; description: string;
   scope: Scope; pluginKey?: string; file: string; estTokens: number; }
 export interface Hook { event: string; matcher?: string; command: string; statusMessage?: string;

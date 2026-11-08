@@ -1,62 +1,42 @@
-# Claude Context Inventory
+# Context Audit for Claude Code
 
-这个 VS Code 扩展显示当前工作区里 Claude Code 会加载进上下文的全部内容：MCP 服务器、插件、技能、agent、hook 和 CLAUDE.md。每一项都给出令牌开销和最近的使用情况。你可以只针对这个项目关掉不用的 MCP 服务器和插件。
+See everything Claude Code loads into context for the project you have open, what each item costs in tokens, and switch off what you never use.
 
-## 能看到什么
+MCP servers, plugins, skills, agents, hooks and `CLAUDE.md` files all add tokens to every session. This view lists them with a measured cost and how often each was used in the last 30 days, so unused weight is easy to spot.
 
-侧边栏的 Claude Context Inventory 视图按下面的分组显示。状态栏左侧显示 `$(pulse) Claude ≈65.6k`，点击打开这个视图。
+## What you see
 
-- `Starting context ≈ 65.6k tokens`：最近一次会话开始时加载的上下文总量。展开后是占用最多的 10 项，加上 `Other (system prompt, built-in tools)`（系统提示、内置工具 schema 等无法归到具体条目的部分）。这个文件夹还没有带 assistant 记录的会话时，显示 `No Claude Code session in this folder yet`。
-- `MCP servers (A active / T total)`：用户级、项目级（含本地）、插件和 claude.ai 的 MCP 服务器。
-- `Plugins (A enabled / T installed)`：展开后分 Skills、Agents、Commands、Hooks、MCP 五组。
-- `Skills`、`Agents`：独立于插件的用户级和项目级条目。
-- `Hooks`：来自 settings 文件的 hook。
-- `CLAUDE.md`：会被加载的说明文件。
+Open the **Context Audit** icon in the activity bar. The status bar also shows `Claude ≈65.6k` (the starting context of your latest session).
 
-条目右侧的说明：
+- **Starting context**: tokens loaded at the start of the latest session, with the top 10 consumers.
+- **MCP servers**, **Plugins** (with their skills, agents, commands, hooks, MCP), **Skills**, **Agents**, **Hooks**, **CLAUDE.md**.
 
-- `≈1.2k tok`：令牌数的估算值。1000 以下原样显示，否则保留一位小数加 `k`。没有会话数据时，MCP 服务器显示 `? tok`，因为它的静态开销无法确定。
-- `3× in 30d`：最近 30 天里使用了 3 次。窗口天数可以在设置 `claudeInventory.usageWindowDays` 里改。
-- `unused 30d`：最近 30 天 0 次使用，并且窗口内至少有 3 次会话（样本太少时不标记）。
-- `disabled here`：已经在这个项目里关掉。
+Each row, left to right:
 
-带 `≈` 的数字是估算。`Starting context` 的总量来自最近一次会话第一条 assistant 记录的 usage，各条目的拆分数按这次会话的记录估算。技能和 agent 始终显示按名称和描述算出的静态估算；CLAUDE.md 在会话记录里有对应条目时显示会话中注入内容的估算值，否则显示文件本身的估算值。
+| Part | Meaning |
+|---|---|
+| Icon colour | green = enabled, grey circle = disabled, yellow warning = enabled but unused, yellow key = needs login |
+| Description | `1.2k · 3×` = about 1.2k tokens, used 3 times in the window. `1.2k · unused` = no use. `off` = disabled |
+| Badge | where it comes from: `U` user, `P` project, `L` local (this machine, this project), `PG` from a plugin, `C` claude.ai connector, `B` built in |
 
-## 怎么关掉不用的东西
+Disabled rows are greyed out. Hover a row for the full name, source file and details.
 
-MCP 服务器：用条目上的内联图标或右键菜单禁用、启用。扩展会改写 `~/.claude.json` 中这个文件夹对应项目的 `disabledMcpServers`，只影响这个文件夹。第一次写入前会把原文件备份为 `~/.claude.json.bak-context-inventory`（每次扩展会话只备份一次）。同一个文件夹可能对应多个项目 key，写入时全部更新；没有对应 key 时会新建一个。
+## Switching things off
 
-插件：在插件条目上禁用或启用，扩展写入 `<项目>/.claude/settings.local.json` 的 `enabledPlugins`。选 Reset 会删掉这条覆盖，回到继承来的状态。
+- **This project only** (inline icon): MCP servers are added to the project's `disabledMcpServers` in `~/.claude.json`; plugins get an override in `<project>/.claude/settings.local.json`.
+- **All projects** (right-click, "Disable in All Projects"): plugins are switched off in `~/.claude/settings.json`. User-level MCP servers move to `~/.claude/mcp-disabled-stash.json` and can be restored from the view. Plugin-provided MCP servers follow their plugin; claude.ai connectors are managed on claude.ai.
 
-改动对新开的 Claude Code 会话生效。正在运行的会话可能在退出时重写 `~/.claude.json`，覆盖掉 MCP 的改动；如果改了没生效，关掉那个会话再切换一次。
+Changes apply to new Claude Code sessions. `~/.claude.json` is backed up once per session as `~/.claude.json.bak-context-inventory` before the first write.
 
-## 限制
+## Limits
 
-- Claude Code 的这些文件格式没有公开文档。实现按 Claude Code 2.1.319 的行为编写，升级后格式变化可能导致某些条目缺失或数字不准。
-- `claude.ai` 连接器列出的是曾经连接过的（`claudeAiMcpEverConnected`），不一定现在还在使用。
-- MCP 工具的 token 数只计算工具名列表的开销。工具 schema 按需加载，不计入起始上下文。
+- Claude Code's config and transcript formats are not documented. This extension follows Claude Code 2.1.x behaviour and may need updates when formats change.
+- Token numbers are estimates. The total comes from the latest session's first assistant record; the split per item is derived from that session's records. MCP tool schemas load on demand and are not counted in the starting context.
+- Usage comes from local session transcripts, which Claude Code keeps for about 30 days.
+- Everything stays on your machine. The extension reads files under `~/.claude*` and the open project and sends nothing anywhere.
 
-## 安装
+## Settings
 
-```powershell
-code --install-extension claude-context-inventory.vsix
-```
+- `claudeInventory.usageWindowDays` (default 30): days of sessions to scan for usage.
 
-需要 VS Code 1.90 或更新版本。
-
-## 开发
-
-```powershell
-npm install
-npm run build        # 打包 dist/extension.js 和 dist/cli.js
-npm run watch        # 监听源码改动
-npm run typecheck    # tsc --noEmit
-npm test             # vitest
-npm run package      # 生成 claude-context-inventory.vsix
-```
-
-调试用 CLI 打印 inventory、measurement 和 usage 的 JSON：
-
-```powershell
-node dist/cli.js "D:\Projects\项目\VSCodePlugin" --days 30
-```
+Requires VS Code 1.90 or newer.

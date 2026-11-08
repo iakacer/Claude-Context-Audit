@@ -8,6 +8,8 @@ export interface ClaudePaths {
   claudeDir: string;
   userSettings: string;
   installedPlugins: string;
+  /** Where user-level MCP servers go when they are switched off everywhere. */
+  mcpStash: string;
   transcriptsRoot: string;
 }
 
@@ -20,6 +22,7 @@ export function ClaudePaths(home: string = os.homedir()): ClaudePaths {
     claudeDir,
     userSettings: path.join(claudeDir, 'settings.json'),
     installedPlugins: path.join(claudeDir, 'plugins', 'installed_plugins.json'),
+    mcpStash: path.join(claudeDir, 'mcp-disabled-stash.json'),
     transcriptsRoot: path.join(claudeDir, 'projects'),
   };
 }

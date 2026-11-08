@@ -6,8 +6,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ClaudePaths } from '../src/core/paths';
 import {
   _resetBackupFlagForTests,
+  restoreUserMcp,
   setMcpDisabled,
+  setPluginGlobal,
   setPluginOverride,
+  stashUserMcp,
 } from '../src/core/writer';
 
 const forwardKey = 'D:/Work/Proj';
@@ -205,5 +208,69 @@ describe('setPluginOverride', () => {
       /invalid JSON/i,
     );
     expect(await fsp.readFile(settingsFile, 'utf8')).toBe(invalid);
+  });
+});
+
+describe('global toggles', () => {
+  let root!: string;
+  let paths!: ClaudePaths;
+
+  beforeEach(async () => {
+    root = await fsp.mkdtemp(path.join(os.tmpdir(), 'cci-writer-global-'));
+    paths = ClaudePaths(path.join(root, 'home'));
+    await fsp.mkdir(paths.claudeDir, { recursive: true });
+    _resetBackupFlagForTests();
+  });
+
+  afterEach(async () => {
+    await fsp.rm(root, { recursive: true, force: true });
+  });
+
+  it('setPluginGlobal edits only enabledPlugins in user settings and backs up', async () => {
+    await fsp.writeFile(
+      paths.userSettings,
+      JSON.stringify({ model: 'sonnet', enabledPlugins: { 'a@m': true, 'b@m': true } }),
+    );
+    await setPluginGlobal(paths, 'a@m', false);
+    const data = JSON.parse(await fsp.readFile(paths.userSettings, 'utf8'));
+    expect(data).toEqual({ model: 'sonnet', enabledPlugins: { 'a@m': false, 'b@m': true } });
+    expect(fs.existsSync(`${paths.userSettings}.bak-context-inventory`)).toBe(true);
+  });
+
+  it('stash then restore moves an MCP config without loss', async () => {
+    const config = { type: 'stdio', command: 'x', args: ['1'] };
+    await fsp.writeFile(
+      paths.claudeJson,
+      JSON.stringify({ other: 1, mcpServers: { a: config, b: { type: 'http', url: 'u' } } }),
+    );
+    await stashUserMcp(paths, 'a');
+    let main = JSON.parse(await fsp.readFile(paths.claudeJson, 'utf8'));
+    let stash = JSON.parse(await fsp.readFile(paths.mcpStash, 'utf8'));
+    expect(Object.keys(main.mcpServers)).toEqual(['b']);
+    expect(main.other).toBe(1);
+    expect(stash.servers.a).toEqual(config);
+
+    await restoreUserMcp(paths, 'a');
+    main = JSON.parse(await fsp.readFile(paths.claudeJson, 'utf8'));
+    stash = JSON.parse(await fsp.readFile(paths.mcpStash, 'utf8'));
+    expect(main.mcpServers.a).toEqual(config);
+    expect(stash.servers).toEqual({});
+  });
+
+  it('stash keeps unrelated keys of an existing stash file', async () => {
+    await fsp.writeFile(paths.claudeJson, JSON.stringify({ mcpServers: { a: { type: 'stdio' } } }));
+    await fsp.writeFile(paths.mcpStash, JSON.stringify({ note: 'hi', servers: { z: { type: 'http' } } }));
+    await stashUserMcp(paths, 'a');
+    const stash = JSON.parse(await fsp.readFile(paths.mcpStash, 'utf8'));
+    expect(stash.note).toBe('hi');
+    expect(Object.keys(stash.servers).sort()).toEqual(['a', 'z']);
+  });
+
+  it('stash rejects an id that is not a user-level server and writes nothing', async () => {
+    const text = JSON.stringify({ mcpServers: { a: { type: 'stdio' } } });
+    await fsp.writeFile(paths.claudeJson, text);
+    await expect(stashUserMcp(paths, 'nope')).rejects.toThrow();
+    expect(await fsp.readFile(paths.claudeJson, 'utf8')).toBe(text);
+    expect(fs.existsSync(paths.mcpStash)).toBe(false);
   });
 });

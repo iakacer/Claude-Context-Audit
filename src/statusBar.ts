@@ -15,7 +15,7 @@ export class InventoryStatusBar implements vscode.Disposable {
       vscode.StatusBarAlignment.Left,
       100,
     );
-    this.item.name = 'Claude Context Inventory';
+    this.item.name = 'Context Audit';
     this.item.command = 'workbench.view.extension.claudeInventory';
   }
 
@@ -25,7 +25,7 @@ export class InventoryStatusBar implements vscode.Disposable {
       ? `$(pulse) Claude ≈${formatTokens(measurement.baselineTokens)}`
       : '$(pulse) Claude';
 
-    const lines: string[] = ['**Claude Context Inventory**'];
+    const lines: string[] = ['**Context Audit**'];
     if (measurement) {
       const consumers = topConsumers(measurement, state.inventory, 3);
       for (const consumer of consumers) {

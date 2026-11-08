@@ -222,3 +222,108 @@ export async function setPluginOverride(
     throw new Error(`Cannot write ${file}: ${errorMessage(err)}.`);
   }
 }
+
+async function writeJsonAtomic(file: string, data: unknown, trailingNewline: boolean): Promise<void> {
+  const tmp = `${file}.tmp-${process.pid}`;
+  const text = JSON.stringify(data, null, 2) + (trailingNewline ? '\n' : '');
+  try {
+    await fsp.mkdir(path.dirname(file), { recursive: true });
+    await fsp.writeFile(tmp, text, 'utf8');
+    renameSync(tmp, file);
+  } catch (err) {
+    try {
+      await fsp.rm(tmp, { force: true });
+    } catch {
+      // Best effort cleanup only.
+    }
+    throw new Error(`Cannot write ${file}: ${errorMessage(err)}.`);
+  }
+}
+
+/**
+ * Enable or disable a plugin for every project by editing the user-level
+ * `~/.claude/settings.json`. A project-level override still wins over this.
+ */
+export async function setPluginGlobal(
+  paths: ClaudePaths,
+  pluginKey: string,
+  value: boolean,
+): Promise<void> {
+  const existing = await readJsonFile<unknown>(paths.userSettings);
+  let settings: JsonObject;
+  if (existing.missing) {
+    settings = {};
+  } else if (existing.error !== undefined) {
+    throw new Error(`Cannot update ${paths.userSettings}: invalid JSON (${existing.error}).`);
+  } else if (!isObject(existing.data)) {
+    throw new Error(`Cannot update ${paths.userSettings}: expected a JSON object.`);
+  } else {
+    settings = existing.data;
+  }
+  let enabledPlugins: JsonObject;
+  if (isObject(settings.enabledPlugins)) {
+    enabledPlugins = settings.enabledPlugins;
+  } else {
+    enabledPlugins = {};
+    settings.enabledPlugins = enabledPlugins;
+  }
+  enabledPlugins[pluginKey] = value;
+  if (!existing.missing) {
+    await fsp.copyFile(paths.userSettings, `${paths.userSettings}.bak-context-inventory`);
+  }
+  await writeJsonAtomic(paths.userSettings, settings, true);
+}
+
+async function loadStash(file: string): Promise<JsonObject> {
+  const result = await readJsonFile<unknown>(file);
+  if (result.missing) {
+    return {};
+  }
+  if (result.error !== undefined || !isObject(result.data)) {
+    throw new Error(`Cannot update ${file}: not a valid JSON object.`);
+  }
+  return result.data;
+}
+
+/**
+ * Switch a user-level MCP server off for every project: its config moves from
+ * `~/.claude.json` into the stash file, so nothing is lost and it can be put
+ * back. The stash is written first so a failure never drops the config.
+ */
+export async function stashUserMcp(paths: ClaudePaths, id: string): Promise<void> {
+  const data = await loadClaudeJson(paths.claudeJson);
+  if (!isObject(data.mcpServers) || !(id in data.mcpServers)) {
+    throw new Error(`"${id}" is not a user-level MCP server in ${paths.claudeJson}.`);
+  }
+  const stash = await loadStash(paths.mcpStash);
+  const servers = isObject(stash.servers) ? stash.servers : {};
+  servers[id] = data.mcpServers[id];
+  stash.servers = servers;
+  await writeJsonAtomic(paths.mcpStash, stash, false);
+
+  await ensureBackup(paths.claudeJson);
+  delete data.mcpServers[id];
+  await writeJsonAtomic(paths.claudeJson, data, false);
+}
+
+/** Undo `stashUserMcp`: put the config back into `~/.claude.json`. */
+export async function restoreUserMcp(paths: ClaudePaths, id: string): Promise<void> {
+  const stash = await loadStash(paths.mcpStash);
+  if (!isObject(stash.servers) || !(id in stash.servers)) {
+    throw new Error(`"${id}" is not in ${paths.mcpStash}.`);
+  }
+  const data = await loadClaudeJson(paths.claudeJson);
+  let servers: JsonObject;
+  if (isObject(data.mcpServers)) {
+    servers = data.mcpServers;
+  } else {
+    servers = {};
+    data.mcpServers = servers;
+  }
+  servers[id] = stash.servers[id];
+  await ensureBackup(paths.claudeJson);
+  await writeJsonAtomic(paths.claudeJson, data, false);
+
+  delete stash.servers[id];
+  await writeJsonAtomic(paths.mcpStash, stash, false);
+}
