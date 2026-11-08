@@ -2,7 +2,7 @@
   "name": "claude-context-audit",
   "displayName": "Context Audit for Claude Code",
   "description": "See every MCP server, plugin, skill, agent and hook Claude Code loads in this project, what each costs in tokens, and switch off what you never use.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "YangLiu0802",
   "engines": {
     "vscode": "^1.90.0"
@@ -20,7 +20,7 @@
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "package": "vsce package --no-dependencies --allow-missing-repository --out claude-context-audit.vsix"
+    "package": "vsce package --no-dependencies --out claude-context-audit.vsix"
   },
   "contributes": {
     "viewsContainers": {
@@ -247,5 +247,13 @@
   "galleryBanner": {
     "color": "#1B1A18",
     "theme": "dark"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iakacer/Claude-Context-Audit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/iakacer/Claude-Context-Audit/issues"
+  },
+  "homepage": "https://github.com/iakacer/Claude-Context-Audit#readme"
 }

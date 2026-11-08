@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- Add repository, issues and homepage links; README links to the Chinese version.
+
 ## 0.2.0
 
 - Rows show state at a glance: coloured status icon, a scope badge (U / P / L / PG / C / B), short names, compact `1.2k · 3×` descriptions.

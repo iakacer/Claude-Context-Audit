@@ -4,6 +4,8 @@ See everything Claude Code loads into context for the project you have open, wha
 
 MCP servers, plugins, skills, agents, hooks and `CLAUDE.md` files all add tokens to every session. This view lists them with a measured cost and how often each was used in the last 30 days, so unused weight is easy to spot.
 
+[中文说明](README.zh-CN.md) · [Issues](https://github.com/iakacer/Claude-Context-Audit/issues)
+
 ## What you see
 
 Open the **Context Audit** icon in the activity bar. The status bar also shows `Claude ≈65.6k` (the starting context of your latest session).
