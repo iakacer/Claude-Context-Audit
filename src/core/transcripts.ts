@@ -1,6 +1,7 @@
 import { createReadStream, promises as fsp } from 'node:fs';
 import * as path from 'node:path';
 import { createInterface } from 'node:readline';
+import { readJsonFile } from './json';
 import type {
   Cost,
   Inventory,
@@ -114,11 +115,79 @@ async function readRecords(
 type McpToolResolver = (toolName: string) => { id: string; prefix: string } | undefined;
 
 /**
- * Map a transcript tool name to an inventory MCP server id. Known server
- * prefixes win; unknown `mcp__` names fall back to the text between `mcp__`
- * and the next `__`.
+ * Rebuild a `plugin:<name>:<server>` id from a sanitized tool prefix using
+ * every installed plugin name (enabled or not), so a plugin-scoped server is
+ * keyed by its inventory id even when the server itself was not scanned.
  */
-function createMcpToolResolver(inventory: Inventory): McpToolResolver {
+function pluginIdForPrefix(prefix: string, pluginNames: string[]): string | undefined {
+  if (!prefix.startsWith('mcp__') || !prefix.endsWith('__')) {
+    return undefined;
+  }
+  const body = prefix.slice('mcp__'.length, -'__'.length);
+  if (!body.startsWith('plugin_')) {
+    return undefined;
+  }
+  for (const name of pluginNames) {
+    const sanitized = name.replace(/[^A-Za-z0-9_-]/g, '_');
+    if (sanitized === '') {
+      continue;
+    }
+    const namePart = `plugin_${sanitized}_`;
+    if (!body.startsWith(namePart)) {
+      continue;
+    }
+    const server = body.slice(namePart.length);
+    if (server === '') {
+      continue;
+    }
+    const id = `plugin:${name}:${server}`;
+    if (mcpPrefix(id) === prefix) {
+      return id;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Names from the installed-plugin inventory plus the scanned plugins, so the
+ * prefix fallback also works for plugins the scanner had to skip (no usable
+ * install entry, no `.mcp.json`).
+ */
+async function installedPluginNames(
+  paths: ClaudePaths,
+  inventory: Inventory,
+): Promise<string[]> {
+  const names = new Set<string>();
+  for (const plugin of inventory.plugins) {
+    if (plugin.name !== '') {
+      names.add(plugin.name);
+    }
+  }
+  const result = await readJsonFile<unknown>(paths.installedPlugins);
+  const data = result.data;
+  const plugins = isObject(data) ? data.plugins : undefined;
+  if (isObject(plugins)) {
+    for (const key of Object.keys(plugins)) {
+      const at = key.indexOf('@');
+      const name = at === -1 ? key : key.slice(0, at);
+      if (name !== '') {
+        names.add(name);
+      }
+    }
+  }
+  return [...names];
+}
+
+/**
+ * Map a transcript tool name to an inventory MCP server id. Known server
+ * prefixes win; then a sanitized plugin prefix is rebuilt into a
+ * `plugin:<name>:<server>` id; unknown `mcp__` names fall back to the text
+ * between `mcp__` and the next `__`.
+ */
+function createMcpToolResolver(
+  inventory: Inventory,
+  pluginNames: string[],
+): McpToolResolver {
   const ids = new Set(inventory.mcpServers.map((server) => server.id));
   for (const plugin of inventory.plugins) {
     for (const id of plugin.mcpServerIds) {
@@ -142,7 +211,12 @@ function createMcpToolResolver(inventory: Inventory): McpToolResolver {
     if (serverPart === '') {
       return undefined;
     }
-    return { id: serverPart, prefix: `mcp__${serverPart}__` };
+    const prefix = `mcp__${serverPart}__`;
+    const pluginId = pluginIdForPrefix(prefix, pluginNames);
+    if (pluginId !== undefined) {
+      return { id: pluginId, prefix };
+    }
+    return { id: serverPart, prefix };
   };
 }
 
@@ -167,9 +241,21 @@ function normalizeForMatch(value: string): string {
   return value.replace(/\\/g, '/').toLowerCase();
 }
 
-/** Plugin name whose install path / cache path appears in a hook command. */
-function hookOwner(command: string, inventory: Inventory): string {
-  const normalized = normalizeForMatch(command);
+/** Plugin name whose hook command/status message or install path matches. */
+function hookOwner(transcriptCommand: string, inventory: Inventory): string {
+  const trimmed = transcriptCommand.trim();
+  for (const plugin of inventory.plugins) {
+    for (const hook of plugin.hooks) {
+      if (hook.command.trim() === trimmed) {
+        return plugin.name;
+      }
+      if (hook.statusMessage !== undefined && hook.statusMessage.trim() === trimmed) {
+        return plugin.name;
+      }
+    }
+  }
+
+  const normalized = normalizeForMatch(transcriptCommand);
   let bestName: string | undefined;
   let bestLength = -1;
   for (const plugin of inventory.plugins) {
@@ -177,15 +263,6 @@ function hookOwner(command: string, inventory: Inventory): string {
     if (installPath !== '' && normalized.includes(installPath) && installPath.length > bestLength) {
       bestName = plugin.name;
       bestLength = installPath.length;
-    }
-    if (plugin.marketplace !== '') {
-      const cachePath = normalizeForMatch(
-        `plugins/cache/${plugin.marketplace}/${plugin.name}/`,
-      );
-      if (normalized.includes(cachePath) && cachePath.length > bestLength) {
-        bestName = plugin.name;
-        bestLength = cachePath.length;
-      }
     }
   }
   return bestName ?? SETTINGS_OWNER;
@@ -214,13 +291,8 @@ function parseListingLine(line: string): ListingLine | undefined {
     name = body.slice(0, colonSpace).trim();
     description = body.slice(colonSpace + 2).trim();
   } else {
-    const colon = body.indexOf(':');
-    if (colon === -1) {
-      name = body;
-    } else {
-      name = body.slice(0, colon).trim();
-      description = body.slice(colon + 1).trim();
-    }
+    // A bare colon is part of the name (e.g. `- vercel:ai-sdk`).
+    name = body;
   }
   if (name === '') {
     return undefined;
@@ -467,7 +539,10 @@ export async function measureLatestSession(
     return undefined;
   }
   const wantedProject = normKey(projectPath);
-  const resolveTool = createMcpToolResolver(inventory);
+  const resolveTool = createMcpToolResolver(
+    inventory,
+    await installedPluginNames(paths, inventory),
+  );
 
   for (const session of sessions) {
     const sessionId = path.basename(session.file).replace(/\.jsonl$/i, '');
@@ -483,6 +558,7 @@ export async function measureLatestSession(
     };
     let startedAt: string | undefined;
     let hasAssistant = false;
+    let firstCwdSeen = false;
     let mismatchedCwd = false;
 
     try {
@@ -495,9 +571,14 @@ export async function measureLatestSession(
         }
         if (record.type === 'user') {
           const cwd = asString(record.cwd);
-          if (cwd !== undefined && normKey(cwd) !== wantedProject) {
-            mismatchedCwd = true;
-            return 'stop';
+          // Only the first user record that carries a cwd decides membership;
+          // later cwd values (the user cd'd elsewhere) are ignored.
+          if (cwd !== undefined && !firstCwdSeen) {
+            firstCwdSeen = true;
+            if (normKey(cwd) !== wantedProject) {
+              mismatchedCwd = true;
+              return 'stop';
+            }
           }
           return;
         }
@@ -592,6 +673,7 @@ async function scanSessionUsage(
   resolveTool: McpToolResolver,
 ): Promise<SessionUsage | undefined> {
   const session: SessionUsage = { mcp: {}, skills: {}, agents: {} };
+  let firstCwdSeen = false;
   let mismatchedCwd = false;
 
   await readRecords(
@@ -600,9 +682,13 @@ async function scanSessionUsage(
       const timestamp = asString(record.timestamp);
       if (record.type === 'user') {
         const cwd = asString(record.cwd);
-        if (cwd !== undefined && normKey(cwd) !== wantedProject) {
-          mismatchedCwd = true;
-          return 'stop';
+        // Membership is decided once, by the first user record with a cwd.
+        if (cwd !== undefined && !firstCwdSeen) {
+          firstCwdSeen = true;
+          if (normKey(cwd) !== wantedProject) {
+            mismatchedCwd = true;
+            return 'stop';
+          }
         }
         for (const text of messageTexts(record)) {
           COMMAND_RE.lastIndex = 0;
@@ -698,7 +784,10 @@ export async function collectUsage(
   }
   const cutoff = now - windowDays * DAY_MS;
   const wantedProject = normKey(projectPath);
-  const resolveTool = createMcpToolResolver(inventory);
+  const resolveTool = createMcpToolResolver(
+    inventory,
+    await installedPluginNames(paths, inventory),
+  );
 
   for (const session of await listSessionFiles(dir)) {
     if (session.mtimeMs < cutoff) {

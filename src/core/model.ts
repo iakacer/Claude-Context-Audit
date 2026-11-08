@@ -3,7 +3,7 @@ export interface McpServer { id: string; name: string; scope: Scope; pluginKey?:
   sourceFile?: string; transport?: string; disabled: boolean; needsAuth: boolean; }
 export interface SkillOrAgent { kind: 'skill'|'agent'; name: string; description: string;
   scope: Scope; pluginKey?: string; file: string; estTokens: number; }
-export interface Hook { event: string; matcher?: string; command: string;
+export interface Hook { event: string; matcher?: string; command: string; statusMessage?: string;
   scope: Scope; pluginKey?: string; sourceFile: string; }
 export interface Plugin { key: string; name: string; marketplace: string; version?: string;
   installPath: string; enabled: boolean; enabledSource: 'user'|'project'|'local'|'default';

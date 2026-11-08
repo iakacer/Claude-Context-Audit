@@ -5,7 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node vercel-session-start.js"
+            "command": "node vercel-session-start.js",
+            "statusMessage": "Starting vercel session"
           }
         ]
       }

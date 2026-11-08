@@ -1,0 +1,5 @@
+{
+  "name": "supabase",
+  "skills": "./custom-skills/",
+  "mcpServers": "./agents/claude/.mcp.json"
+}

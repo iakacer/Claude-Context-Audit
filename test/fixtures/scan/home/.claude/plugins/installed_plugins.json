@@ -21,6 +21,13 @@
         "installPath": "plugins/off",
         "version": "0.1.0"
       }
+    ],
+    "supabase@mk": [
+      {
+        "scope": "user",
+        "installPath": "plugins/supabase",
+        "version": "2.0.0"
+      }
     ]
   }
 }

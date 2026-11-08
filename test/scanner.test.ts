@@ -115,6 +115,7 @@ describe('buildInventory', () => {
     expect(inventory.plugins.map((entry) => entry.key)).toEqual([
       'ads@mk',
       'off@mk',
+      'supabase@mk',
       'vercel-plugin@vercel',
     ]);
 
@@ -143,6 +144,27 @@ describe('buildInventory', () => {
       enabled: false,
       enabledSource: 'user',
     });
+  });
+
+  it('honors plugin.json location overrides and keeps disabled plugin contents', () => {
+    const supabase = plugin('supabase@mk');
+    expect(supabase).toMatchObject({
+      name: 'supabase',
+      marketplace: 'mk',
+      version: '2.0.0',
+      enabled: false,
+      enabledSource: 'user',
+    });
+
+    // `skills: "./custom-skills/"` replaces the default skills directory.
+    expect(supabase?.skills.map((entry) => entry.name)).toEqual(['supabase:seo']);
+    expect(supabase?.skills.some((entry) => entry.name === 'supabase:ignored')).toBe(false);
+
+    // `mcpServers: "./agents/claude/.mcp.json"` replaces the default .mcp.json.
+    expect(supabase?.mcpServerIds).toEqual(['plugin:supabase:supabase']);
+    expect(server('plugin:supabase:supabase')).toBeUndefined();
+
+    expect(inventory.warnings).toEqual([]);
   });
 
   it('scans standalone and plugin skills with qualified names', () => {
@@ -196,6 +218,7 @@ describe('buildInventory', () => {
       event: 'SessionStart',
       scope: 'plugin',
       pluginKey: 'vercel-plugin@vercel',
+      statusMessage: 'Starting vercel session',
     });
   });
 

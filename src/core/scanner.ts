@@ -160,6 +160,21 @@ function collectStringSet(entries: JsonObject[], key: string): Set<string> {
 }
 
 /**
+ * Read a plugin.json path override that may be a single string or an array of
+ * strings. Returns `undefined` when absent so the default location applies; an
+ * empty array is a present override that disables the default location.
+ */
+function pathList(value: unknown): string[] | undefined {
+  if (typeof value === 'string') {
+    return value === '' ? [] : [value];
+  }
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === 'string' && item !== '');
+  }
+  return undefined;
+}
+
+/**
  * Return every `~/.claude.json` project key that normalizes to `projectPath`.
  * Several keys can point at the same folder because Claude Code writes them
  * with inconsistent case and slash direction.
@@ -210,7 +225,9 @@ function hooksFromContainer(
         if (typeof command !== 'string' || command === '') {
           continue;
         }
-        hooks.push({ event, matcher, command, scope, pluginKey, sourceFile });
+        const statusMessage =
+          typeof item.statusMessage === 'string' ? item.statusMessage : undefined;
+        hooks.push({ event, matcher, command, statusMessage, scope, pluginKey, sourceFile });
       }
     }
   }
@@ -260,13 +277,12 @@ async function scanStandaloneSkills(
   return skills;
 }
 
-async function scanPluginSkills(
-  installPath: string,
+async function scanPluginSkillDir(
+  dir: string,
   pluginName: string,
   pluginKey: string,
   warnings: string[],
 ): Promise<SkillOrAgent[]> {
-  const dir = path.join(installPath, 'skills');
   const entries = await readDir(dir, warnings);
   if (!entries) {
     return [];
@@ -294,6 +310,29 @@ async function scanPluginSkills(
       file,
       estTokens: listingTokens(name, description),
     });
+  }
+  return skills;
+}
+
+async function scanPluginSkills(
+  installPath: string,
+  pluginJson: unknown,
+  pluginName: string,
+  pluginKey: string,
+  warnings: string[],
+): Promise<SkillOrAgent[]> {
+  const override = isObject(pluginJson) ? pathList(pluginJson.skills) : undefined;
+  const dirs = override ?? [path.join(installPath, 'skills')];
+  const skills: SkillOrAgent[] = [];
+  for (const dir of dirs) {
+    skills.push(
+      ...(await scanPluginSkillDir(
+        path.resolve(installPath, dir),
+        pluginName,
+        pluginKey,
+        warnings,
+      )),
+    );
   }
   skills.sort((a, b) => compareStrings(a.name, b.name));
   return skills;
@@ -419,21 +458,87 @@ async function scanPluginAgents(
 
 async function scanPluginCommands(
   installPath: string,
+  pluginJson: unknown,
   warnings: string[],
 ): Promise<string[]> {
-  const dir = path.join(installPath, 'commands');
-  const entries = await readDir(dir, warnings);
-  if (!entries) {
-    return [];
-  }
-  const commands: string[] = [];
-  for (const entry of entries) {
-    const kind = await entryKind(dir, entry);
-    if (kind?.file && entry.name.toLowerCase().endsWith('.md')) {
-      commands.push(fileStem(entry.name));
+  const override = isObject(pluginJson) ? pathList(pluginJson.commands) : undefined;
+  const targets = override ?? [path.join(installPath, 'commands')];
+  const commands = new Set<string>();
+  for (const target of targets) {
+    const resolved = path.resolve(installPath, target);
+    let isFile = false;
+    let isDirectory = false;
+    try {
+      const stat = await fsp.stat(resolved);
+      isFile = stat.isFile();
+      isDirectory = stat.isDirectory();
+    } catch {
+      continue;
+    }
+    if (isFile) {
+      if (resolved.toLowerCase().endsWith('.md')) {
+        commands.add(fileStem(resolved));
+      }
+      continue;
+    }
+    if (!isDirectory) {
+      continue;
+    }
+    const entries = await readDir(resolved, warnings);
+    if (!entries) {
+      continue;
+    }
+    for (const entry of entries) {
+      const kind = await entryKind(resolved, entry);
+      if (kind?.file && entry.name.toLowerCase().endsWith('.md')) {
+        commands.add(fileStem(entry.name));
+      }
     }
   }
-  return commands.sort(compareStrings);
+  return [...commands].sort(compareStrings);
+}
+
+async function scanPluginHooks(
+  installPath: string,
+  pluginJson: unknown,
+  pluginJsonFile: string,
+  pluginKey: string,
+  warnings: string[],
+): Promise<Hook[]> {
+  const override = isObject(pluginJson) ? pluginJson.hooks : undefined;
+  if (typeof override === 'string' && override !== '') {
+    const file = path.resolve(installPath, override);
+    const data = await loadJson(file, warnings);
+    const container = isObject(data) ? data.hooks : undefined;
+    return hooksFromContainer(container, 'plugin', file, pluginKey);
+  }
+  if (isObject(override)) {
+    return hooksFromContainer(override.hooks, 'plugin', pluginJsonFile, pluginKey);
+  }
+  const file = path.join(installPath, 'hooks', 'hooks.json');
+  const data = await loadJson(file, warnings);
+  const container = isObject(data) ? data.hooks : undefined;
+  return hooksFromContainer(container, 'plugin', file, pluginKey);
+}
+
+async function scanPluginMcp(
+  installPath: string,
+  pluginJson: unknown,
+  pluginJsonFile: string,
+  warnings: string[],
+): Promise<{ servers: ServerDef[]; sourceFile: string }> {
+  const override = isObject(pluginJson) ? pluginJson.mcpServers : undefined;
+  if (typeof override === 'string' && override !== '') {
+    const file = path.resolve(installPath, override);
+    const data = await loadJson(file, warnings);
+    return { servers: pluginMcpServers(data), sourceFile: file };
+  }
+  if (isObject(override)) {
+    return { servers: pluginMcpServers(override), sourceFile: pluginJsonFile };
+  }
+  const file = path.join(installPath, '.mcp.json');
+  const data = await loadJson(file, warnings);
+  return { servers: pluginMcpServers(data), sourceFile: file };
 }
 
 function pluginEnabled(
@@ -632,7 +737,13 @@ export async function buildInventory(
       const versionValue = entry.version;
       const version = typeof versionValue === 'string' ? versionValue : undefined;
 
-      const skills = await scanPluginSkills(installPath, pluginName, pluginKey, warnings);
+      const skills = await scanPluginSkills(
+        installPath,
+        pluginJson,
+        pluginName,
+        pluginKey,
+        warnings,
+      );
       const agents = await scanPluginAgents(
         installPath,
         pluginName,
@@ -640,16 +751,22 @@ export async function buildInventory(
         pluginJson,
         warnings,
       );
-      const commands = await scanPluginCommands(installPath, warnings);
+      const commands = await scanPluginCommands(installPath, pluginJson, warnings);
+      const hooks = await scanPluginHooks(
+        installPath,
+        pluginJson,
+        pluginJsonFile,
+        pluginKey,
+        warnings,
+      );
 
-      const hooksFile = path.join(installPath, 'hooks', 'hooks.json');
-      const hooksData = await loadJson(hooksFile, warnings);
-      const hooksContainer = isObject(hooksData) ? hooksData.hooks : undefined;
-      const hooks = hooksFromContainer(hooksContainer, 'plugin', hooksFile, pluginKey);
-
-      const mcpFile = path.join(installPath, '.mcp.json');
-      const pluginMcpData = await loadJson(mcpFile, warnings);
-      const pluginServers = pluginMcpServers(pluginMcpData);
+      const mcpScan = await scanPluginMcp(
+        installPath,
+        pluginJson,
+        pluginJsonFile,
+        warnings,
+      );
+      const pluginServers = mcpScan.servers;
       const mcpServerIds = pluginServers.map(
         (server) => `plugin:${pluginName}:${server.name}`,
       );
@@ -663,7 +780,7 @@ export async function buildInventory(
             name: server.name,
             scope: 'plugin',
             pluginKey,
-            sourceFile: mcpFile,
+            sourceFile: mcpScan.sourceFile,
             transport: transportOf(server.config),
             disabled: disabledMcp.has(id),
             needsAuth: needsAuth.has(id),

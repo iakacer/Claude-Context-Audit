@@ -97,8 +97,34 @@ export async function createTranscriptFixture(): Promise<TranscriptFixture> {
     ],
     agents: [],
     commands: [],
-    hooks: [],
+    hooks: [
+      {
+        event: 'SessionStart',
+        command: 'node "${CLAUDE_PLUGIN_ROOT}/hooks/inject-claude-md.mjs"',
+        statusMessage: 'Checking i-have-adhd always-on flag...',
+        scope: 'plugin',
+        pluginKey: 'vercel-plugin@vercel',
+        sourceFile: path.join(installPath, 'hooks', 'hooks.json'),
+      },
+    ],
     mcpServerIds: ['plugin:vercel:vercel'],
+  };
+
+  // Installed but disabled at user level, and its MCP server was never scanned:
+  // the transcript's sanitized prefix must still map back to the plugin id.
+  const supabasePlugin: Plugin = {
+    key: 'supabase@mk',
+    name: 'supabase',
+    marketplace: 'mk',
+    version: '2.0.0',
+    installPath: path.join(root, 'plugins', 'supabase'),
+    enabled: false,
+    enabledSource: 'user',
+    skills: [],
+    agents: [],
+    commands: [],
+    hooks: [],
+    mcpServerIds: [],
   };
 
   const inventory: Inventory = {
@@ -111,7 +137,7 @@ export async function createTranscriptFixture(): Promise<TranscriptFixture> {
       }),
       mcpServer('claude.ai Gmail', { name: 'claude.ai Gmail', scope: 'claudeai' }),
     ],
-    plugins: [vercelPlugin],
+    plugins: [supabasePlugin, vercelPlugin],
     skills: [
       {
         kind: 'skill',
@@ -154,6 +180,7 @@ export async function createTranscriptFixture(): Promise<TranscriptFixture> {
           'mcp__plugin_vercel_vercel__a',
           'mcp__plugin_vercel_vercel__b',
           'mcp__plugin_vercel_vercel__c',
+          'mcp__plugin_supabase_supabase__search',
           'mcp__claude-in-chrome__x',
           'Read',
           'Bash',
@@ -175,7 +202,8 @@ export async function createTranscriptFixture(): Promise<TranscriptFixture> {
       timestamp: mainTimestamp,
       attachment: {
         type: 'skill_listing',
-        content: '- vercel:s1: d\n- myskill: d',
+        content:
+          '- vercel:s1: d\n- vercel:ai-sdk\n- claude-seo:seo-geo\n- myskill: d',
       },
     },
     {
@@ -191,10 +219,50 @@ export async function createTranscriptFixture(): Promise<TranscriptFixture> {
       type: 'attachment',
       timestamp: mainTimestamp,
       attachment: {
+        // No addedTypes: the listing line itself must be parsed without
+        // splitting the name at its bare colon.
+        type: 'agent_listing_delta',
+        addedLines: ['- vercel:agent-x'],
+      },
+    },
+    {
+      type: 'attachment',
+      timestamp: mainTimestamp,
+      attachment: {
+        type: 'hook_success',
+        hookEvent: 'SessionStart',
+        command: 'node "${CLAUDE_PLUGIN_ROOT}/hooks/inject-claude-md.mjs"',
+        content: 'raw plugin hook',
+      },
+    },
+    {
+      type: 'attachment',
+      timestamp: mainTimestamp,
+      attachment: {
+        type: 'hook_success',
+        hookEvent: 'UserPromptSubmit',
+        command: 'Checking i-have-adhd always-on flag...',
+        content: 'status message hook',
+      },
+    },
+    {
+      type: 'attachment',
+      timestamp: mainTimestamp,
+      attachment: {
         type: 'hook_success',
         hookEvent: 'SessionStart',
         command: `node "${path.join(installPath, 'hooks', 'run.js')}"`,
         content: 'hook says hi',
+      },
+    },
+    {
+      type: 'attachment',
+      timestamp: mainTimestamp,
+      attachment: {
+        type: 'hook_success',
+        hookEvent: 'PreToolUse',
+        command: 'echo user-hook',
+        content: 'settings hook',
       },
     },
     {

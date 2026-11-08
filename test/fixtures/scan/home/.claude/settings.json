@@ -2,7 +2,8 @@
   "enabledPlugins": {
     "vercel-plugin@vercel": true,
     "ads@mk": true,
-    "off@mk": false
+    "off@mk": false,
+    "supabase@mk": false
   },
   "hooks": {
     "PreToolUse": [
