@@ -75,7 +75,10 @@ Tool-name prefix of a server (used in transcripts):
 `mcpPrefix(id) = 'mcp__' + id.replace(/[^A-Za-z0-9_-]/g,'_') + '__'`
 (e.g. `plugin:vercel:vercel` → `mcp__plugin_vercel_vercel__`,
 `claude.ai Gmail` → `mcp__claude_ai_Gmail__`).
-Tool names with an `mcp__` prefix matching no known server are reported as
+Before falling back, also try ids `plugin:<name>:<server>` built from every
+installed plugin name (enabled or not): if mcpPrefix of such an id equals the
+prefix, key the group by that id.
+Tool names with an `mcp__` prefix still matching no known server are reported as
 servers of scope `builtin` (e.g. `claude-in-chrome`, `claude-vscode`), named by
 the prefix text.
 
@@ -97,6 +100,12 @@ the prefix text.
   - commands: `<installPath>/commands/*.md` (names only)
   - hooks: `<installPath>/hooks/hooks.json` → `{hooks: {<Event>: [{matcher?, hooks:[{type, command}]}]}}`
   - mcp: per 2.2
+  - `plugin.json` may override locations: `skills` (string dir path or array
+    of dir paths), `agents` (array of file paths), `commands` (string or
+    array), `hooks` (string path to a hooks.json, or an inline object with a
+    `hooks` key), `mcpServers` (string path to a .mcp.json-shaped file, or an
+    inline object of servers). Paths are relative to installPath. A present
+    field replaces the default location; absent → defaults above.
 
 ### 2.4 Standalone skills, agents, hooks, instructions
 - Skills: `<claudeDir>/skills/*/SKILL.md` (scope user),
@@ -122,8 +131,9 @@ Transcript dir for a project: the subdir of `transcriptsRoot` whose name equals
 `slug(projectPath)` **case-insensitively**, where
 `slug(p) = p.replace(/[^A-Za-z0-9]/g, '-')`
 (`d:\Projects\项目\VSCodePlugin` → `d--Projects----VSCodePlugin`). Slugs can
-collide; when reading a session, if its `user` records have a `cwd`, skip the
-session unless `normKey(cwd) === normKey(projectPath)`.
+collide; a session belongs to the project iff the `cwd` of its FIRST `user`
+record that has one matches (normKey). Later records may carry other cwd
+values (the user cd'd elsewhere) — ignore them; never exclude a session for that.
 
 Sessions are `*.jsonl` (one JSON object per line; skip unparsable lines).
 Latest session = newest mtime that contains at least one `assistant` record.
@@ -136,10 +146,15 @@ Records used (`type` field):
   - `mcp_instructions_delta`: `addedNames[i]` (server id) ↔ `addedBlocks[i]` (text).
   - `skill_listing`: `content` (text, lines `- name: description`). Attribute
     each line to a plugin by `name` prefix before `:`; no prefix → standalone.
+    A line is `- <name>` or `- <name>: <description>`; the name ends at the
+    first `: ` (colon + space) or end of line — never split on a bare `:`.
   - `agent_listing_delta`: `addedTypes[i]` ↔ `addedLines[i]`; same attribution.
-  - `hook_success`: `hookEvent`, `command`, `content` (text injected). Attribute
-    to a plugin when `command` contains the plugin's installPath (compare with
-    `/` and `\` normalized, case-insensitive) or `plugins/cache/<marketplace>/<name>/`.
+  - `hook_success`: `hookEvent`, `command`, `content` (text injected). The
+    `command` field holds either the raw unexpanded command from hooks.json
+    (with `${CLAUDE_PLUGIN_ROOT}` literally) or the hook's `statusMessage`.
+    Attribute to the first plugin having a hook whose `command` or
+    `statusMessage` equals it (trimmed); else to a plugin whose installPath
+    occurs in it (normalized, case-insensitive); else `(settings)`.
   - `instructions`: `files: [{path, type, content}]`.
   Only count attachments that appear **before the first `assistant` record**
   (that is the session's fixed starting context).
@@ -196,7 +211,7 @@ export interface McpServer { id: string; name: string; scope: Scope; pluginKey?:
   sourceFile?: string; transport?: string; disabled: boolean; needsAuth: boolean; }
 export interface SkillOrAgent { kind: 'skill'|'agent'; name: string; description: string;
   scope: Scope; pluginKey?: string; file: string; estTokens: number; }
-export interface Hook { event: string; matcher?: string; command: string;
+export interface Hook { event: string; matcher?: string; command: string; statusMessage?: string;
   scope: Scope; pluginKey?: string; sourceFile: string; }
 export interface Plugin { key: string; name: string; marketplace: string; version?: string;
   installPath: string; enabled: boolean; enabledSource: 'user'|'project'|'local'|'default';
