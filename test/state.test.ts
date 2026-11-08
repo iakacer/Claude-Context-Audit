@@ -226,7 +226,7 @@ describe('describeItem', () => {
         disabled: false,
         windowDays: 30,
       }),
-    ).toBe('≈1.2k tok · 3× in 30d');
+    ).toBe('1.2k · 3×');
   });
 
   it('shows the unused flag', () => {
@@ -238,7 +238,7 @@ describe('describeItem', () => {
         disabled: false,
         windowDays: 30,
       }),
-    ).toBe('≈1.2k tok · unused 30d');
+    ).toBe('1.2k · unused');
   });
 
   it('shows disabled first', () => {
@@ -250,7 +250,7 @@ describe('describeItem', () => {
         disabled: true,
         windowDays: 30,
       }),
-    ).toBe('disabled here');
+    ).toBe('off');
   });
 
   it('uses ? tok for unknown tokens', () => {
@@ -261,7 +261,7 @@ describe('describeItem', () => {
         disabled: false,
         windowDays: 30,
       }),
-    ).toBe('? tok');
+    ).toBe('?');
     expect(
       describeItem({
         usage: { count: 2 },
@@ -269,7 +269,7 @@ describe('describeItem', () => {
         disabled: false,
         windowDays: 7,
       }),
-    ).toBe('? tok · 2× in 7d');
+    ).toBe('? · 2×');
   });
 
   it('omits the usage suffix when there is no use and no unused flag', () => {
@@ -281,7 +281,7 @@ describe('describeItem', () => {
         disabled: false,
         windowDays: 30,
       }),
-    ).toBe('≈800 tok');
+    ).toBe('800');
   });
 });
 

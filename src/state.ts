@@ -166,23 +166,23 @@ export interface DescribeItemOptions {
 
 /**
  * Item description per the UI spec:
- * `≈1.2k tok · 3× in 30d`, `≈1.2k tok · unused 30d`, `disabled here`.
- * Unknown token counts are shown as `? tok`.
+ * Compact so it survives a narrow sidebar: `1.2k · 3×`, `1.2k · unused`, `off`.
+ * Unknown token counts are shown as `?`.
  */
 export function describeItem(options: DescribeItemOptions): string {
   if (options.disabled) {
-    return 'disabled here';
+    return 'off';
   }
   const tokens =
     options.tokens !== undefined && Number.isFinite(options.tokens)
-      ? `≈${formatTokens(options.tokens)} tok`
-      : '? tok';
+      ? formatTokens(options.tokens)
+      : '?';
   if (options.unused) {
-    return `${tokens} · unused ${options.windowDays}d`;
+    return `${tokens} · unused`;
   }
   const count = options.usage?.count ?? 0;
   if (count > 0) {
-    return `${tokens} · ${count}× in ${options.windowDays}d`;
+    return `${tokens} · ${count}×`;
   }
   return tokens;
 }

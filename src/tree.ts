@@ -50,6 +50,50 @@ export interface InventoryNodeOptions {
   pluginKey?: string;
   pluginEnabled?: boolean;
   hasLocalOverride?: boolean;
+  /** 1-2 letter scope badge shown at the right edge, even when the row is truncated. */
+  badge?: string;
+  /** Whole-row tone: `off` greys the row out, `warn` colours it as a warning. */
+  tone?: 'off' | 'warn';
+}
+
+export const DECORATION_SCHEME = 'claude-inv';
+
+/**
+ * Badge and tone ride in the URI so the decoration provider is stateless.
+ * The explicit `label` stays the visible text; the URI is never opened.
+ */
+function decorationUri(badge?: string, tone?: 'off' | 'warn'): vscode.Uri | undefined {
+  if (badge === undefined && tone === undefined) {
+    return undefined;
+  }
+  const query = new URLSearchParams();
+  if (badge) {
+    query.set('b', badge);
+  }
+  if (tone) {
+    query.set('t', tone);
+  }
+  return vscode.Uri.from({ scheme: DECORATION_SCHEME, path: '/item', query: query.toString() });
+}
+
+export class InventoryDecorations implements vscode.FileDecorationProvider {
+  provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
+    if (uri.scheme !== DECORATION_SCHEME) {
+      return undefined;
+    }
+    const query = new URLSearchParams(uri.query);
+    const badge = query.get('b') ?? undefined;
+    const tone = query.get('t');
+    const color =
+      tone === 'off'
+        ? new vscode.ThemeColor('disabledForeground')
+        : tone === 'warn'
+          ? new vscode.ThemeColor('list.warningForeground')
+          : undefined;
+    const decoration = new vscode.FileDecoration(badge, undefined, color);
+    decoration.propagate = false;
+    return decoration;
+  }
 }
 
 /**
@@ -80,6 +124,10 @@ export class InventoryNode extends vscode.TreeItem {
     this.pluginKey = options.pluginKey;
     this.pluginEnabled = options.pluginEnabled;
     this.hasLocalOverride = options.hasLocalOverride;
+    const uri = decorationUri(options.badge, options.tone);
+    if (uri) {
+      this.resourceUri = uri;
+    }
     if (options.description !== undefined) {
       this.description = options.description;
     }
@@ -140,6 +188,8 @@ interface IconFlags {
   disabled?: boolean;
   unused?: boolean;
   needsAuth?: boolean;
+  /** Enabled and in use (or at least not flagged): shown green. */
+  active?: boolean;
 }
 
 function itemIcon(
@@ -147,10 +197,10 @@ function itemIcon(
   flags: IconFlags = {},
 ): vscode.ThemeIcon {
   if (flags.disabled) {
-    return new vscode.ThemeIcon(ICONS.disabled);
+    return new vscode.ThemeIcon(ICONS.disabled, new vscode.ThemeColor('disabledForeground'));
   }
   if (flags.needsAuth) {
-    return new vscode.ThemeIcon(ICONS.auth);
+    return new vscode.ThemeIcon(ICONS.auth, new vscode.ThemeColor('charts.yellow'));
   }
   if (flags.unused) {
     return new vscode.ThemeIcon(
@@ -158,7 +208,49 @@ function itemIcon(
       new vscode.ThemeColor('list.warningForeground'),
     );
   }
+  if (flags.active) {
+    return new vscode.ThemeIcon(baseIconId(kind), new vscode.ThemeColor('testing.iconPassed'));
+  }
   return new vscode.ThemeIcon(baseIconId(kind));
+}
+
+type BadgeSource = 'user' | 'project' | 'local' | 'plugin' | 'claudeai' | 'builtin' | 'default';
+
+/** Where an item comes from, as one or two letters (legend is in the tooltips). */
+function scopeBadge(scope: BadgeSource): string | undefined {
+  switch (scope) {
+    case 'user':
+      return 'U';
+    case 'project':
+      return 'P';
+    case 'local':
+      return 'L';
+    case 'claudeai':
+      return 'C';
+    case 'builtin':
+      return 'B';
+    case 'plugin':
+      return 'PG';
+    default:
+      return undefined;
+  }
+}
+
+const SCOPE_LEGEND =
+  'U = user · P = project · L = local (this machine, this project) · PG = from a plugin · C = claude.ai connector · B = built in';
+
+/** `plugin:vercel:vercel` -> `vercel`, `plugin:a:b` -> `a/b`, `claude.ai Gmail` -> `Gmail`. */
+function shortMcpLabel(id: string): string {
+  const parts = /^plugin:([^:]+):(.+)$/.exec(id);
+  if (parts) {
+    return parts[1] === parts[2] ? parts[2] : `${parts[1]}/${parts[2]}`;
+  }
+  return id.replace(/^claude\.ai\s+/, '');
+}
+
+/** Drop the redundant `<plugin>:` prefix when the item is shown under its plugin. */
+function stripPluginPrefix(name: string, pluginName: string | undefined): string {
+  return pluginName && name.startsWith(`${pluginName}:`) ? name.slice(pluginName.length + 1) : name;
 }
 
 function markdown(lines: string[]): vscode.MarkdownString {
@@ -315,6 +407,7 @@ function buildMcpNode(ctx: BuildContext, server: McpServer): InventoryNode {
   const tooltip: string[] = [
     `**MCP server** ${code(server.id)}`,
     `Scope: ${server.scope}`,
+    SCOPE_LEGEND,
   ];
   if (server.pluginKey) {
     tooltip.push(`Plugin: ${code(server.pluginKey)}`);
@@ -346,7 +439,9 @@ function buildMcpNode(ctx: BuildContext, server: McpServer): InventoryNode {
 
   return new InventoryNode({
     kind: 'mcp',
-    label: server.id,
+    label: shortMcpLabel(server.id),
+    badge: scopeBadge(server.scope),
+    tone: server.disabled ? 'off' : unused ? 'warn' : undefined,
     description: describeItem({
       tokens,
       usage: usageEntry,
@@ -358,6 +453,7 @@ function buildMcpNode(ctx: BuildContext, server: McpServer): InventoryNode {
       disabled: server.disabled,
       unused,
       needsAuth: server.needsAuth,
+      active: !server.disabled,
     }),
     contextValue,
     tooltip: markdown(tooltip),
@@ -446,6 +542,7 @@ function pluginMcpServers(ctx: BuildContext, plugin: Plugin): McpServer[] {
 function buildSkillAgentNode(
   ctx: BuildContext,
   item: SkillOrAgent,
+  pluginName?: string,
 ): InventoryNode {
   const usageEntry: UsageEntry | undefined =
     item.kind === 'skill'
@@ -476,7 +573,9 @@ function buildSkillAgentNode(
 
   return new InventoryNode({
     kind,
-    label: item.name,
+    label: stripPluginPrefix(item.name, pluginName),
+    badge: pluginName ? undefined : scopeBadge(item.scope),
+    tone: unused ? 'warn' : undefined,
     description: describeItem({
       tokens: item.estTokens,
       usage: usageEntry,
@@ -484,7 +583,7 @@ function buildSkillAgentNode(
       disabled: false,
       windowDays: ctx.state.usage.windowDays,
     }),
-    icon: itemIcon(kind, { unused }),
+    icon: itemIcon(kind, { unused, active: true }),
     contextValue: `${kind}:source`,
     tooltip: markdown(tooltip),
     file: item.file,
@@ -515,6 +614,7 @@ function buildHookNode(ctx: BuildContext, hook: Hook): InventoryNode {
   return new InventoryNode({
     kind: 'hook',
     label: hook.event,
+    badge: hook.pluginKey ? undefined : scopeBadge(hook.scope),
     description: describeItem({
       tokens,
       usage: undefined,
@@ -567,7 +667,7 @@ function buildPluginChildren(ctx: BuildContext, plugin: Plugin): InventoryNode[]
         'Skills',
         'group',
         itemIcon('skill'),
-        plugin.skills.map((skill) => buildSkillAgentNode(ctx, skill)),
+        plugin.skills.map((skill) => buildSkillAgentNode(ctx, skill, plugin.name)),
       ),
     );
   }
@@ -577,7 +677,7 @@ function buildPluginChildren(ctx: BuildContext, plugin: Plugin): InventoryNode[]
         'Agents',
         'group',
         itemIcon('agent'),
-        plugin.agents.map((agent) => buildSkillAgentNode(ctx, agent)),
+        plugin.agents.map((agent) => buildSkillAgentNode(ctx, agent, plugin.name)),
       ),
     );
   }
@@ -651,8 +751,9 @@ function buildPluginNode(ctx: BuildContext, plugin: Plugin): InventoryNode {
   }
   tooltip.push(`Install path: ${code(plugin.installPath)}`);
   tooltip.push(
-    `Enabled: ${plugin.enabled ? 'yes' : 'no'} (source: ${plugin.enabledSource})`,
+    `Enabled: ${plugin.enabled ? 'yes' : 'no'} (set at: ${plugin.enabledSource})`,
   );
+  tooltip.push(SCOPE_LEGEND);
   if (tokens !== undefined) {
     tooltip.push(`Measured: ≈${formatTokens(tokens)} tokens`);
   }
@@ -666,7 +767,9 @@ function buildPluginNode(ctx: BuildContext, plugin: Plugin): InventoryNode {
 
   return new InventoryNode({
     kind: 'plugin',
-    label: plugin.key,
+    label: plugin.name,
+    badge: scopeBadge(plugin.enabledSource),
+    tone: !plugin.enabled ? 'off' : unused ? 'warn' : undefined,
     description: describeItem({
       tokens,
       usage: entry,
@@ -674,7 +777,7 @@ function buildPluginNode(ctx: BuildContext, plugin: Plugin): InventoryNode {
       disabled: !plugin.enabled,
       windowDays: ctx.state.usage.windowDays,
     }),
-    icon: itemIcon('plugin', { disabled: !plugin.enabled, unused }),
+    icon: itemIcon('plugin', { disabled: !plugin.enabled, unused, active: plugin.enabled }),
     contextValue,
     tooltip: markdown(tooltip),
     file: pluginSourceFile(plugin),

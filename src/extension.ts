@@ -4,7 +4,7 @@ import { ClaudePaths, findTranscriptDir } from './core/paths';
 import { setMcpDisabled, setPluginOverride } from './core/writer';
 import { loadState } from './state';
 import { InventoryStatusBar } from './statusBar';
-import { InventoryNode, InventoryProvider } from './tree';
+import { InventoryDecorations, InventoryNode, InventoryProvider } from './tree';
 
 const MCP_WRITE_MESSAGE =
   'Applies to new Claude Code sessions in this folder. A Claude Code session running right now may overwrite this; if the change does not stick, close it and toggle again.';
@@ -27,6 +27,7 @@ function activateInner(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('claudeInventory.view', provider),
+    vscode.window.registerFileDecorationProvider(new InventoryDecorations()),
   );
 
   let running = false;
