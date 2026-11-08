@@ -3,7 +3,7 @@
   "displayName": "Context Audit for Claude Code",
   "description": "See every MCP server, plugin, skill, agent and hook Claude Code loads in this project, what each costs in tokens, and switch off what you never use.",
   "version": "0.2.0",
-  "publisher": "local",
+  "publisher": "YangLiu0802",
   "engines": {
     "vscode": "^1.90.0"
   },
