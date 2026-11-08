@@ -49,27 +49,32 @@
       {
         "command": "claudeInventory.disableMcp",
         "title": "Disable MCP Server",
-        "category": "Claude Context Inventory"
+        "category": "Claude Context Inventory",
+        "icon": "$(circle-slash)"
       },
       {
         "command": "claudeInventory.enableMcp",
         "title": "Enable MCP Server",
-        "category": "Claude Context Inventory"
+        "category": "Claude Context Inventory",
+        "icon": "$(check)"
       },
       {
         "command": "claudeInventory.disablePlugin",
         "title": "Disable Plugin",
-        "category": "Claude Context Inventory"
+        "category": "Claude Context Inventory",
+        "icon": "$(circle-slash)"
       },
       {
         "command": "claudeInventory.enablePlugin",
         "title": "Enable Plugin",
-        "category": "Claude Context Inventory"
+        "category": "Claude Context Inventory",
+        "icon": "$(check)"
       },
       {
         "command": "claudeInventory.resetPlugin",
         "title": "Reset Plugin Override (Use Inherited)",
-        "category": "Claude Context Inventory"
+        "category": "Claude Context Inventory",
+        "icon": "$(discard)"
       },
       {
         "command": "claudeInventory.openSource",
@@ -98,12 +103,12 @@
       "view/item/context": [
         {
           "command": "claudeInventory.disableMcp",
-          "when": "view == claudeInventory.view && viewItem == mcp:on",
+          "when": "view == claudeInventory.view && viewItem =~ /^mcp:on/",
           "group": "inline@1"
         },
         {
           "command": "claudeInventory.enableMcp",
-          "when": "view == claudeInventory.view && viewItem == mcp:off",
+          "when": "view == claudeInventory.view && viewItem =~ /^mcp:off/",
           "group": "inline@1"
         },
         {
@@ -118,13 +123,38 @@
         },
         {
           "command": "claudeInventory.resetPlugin",
-          "when": "view == claudeInventory.view && viewItem =~ /^plugin:(on|off):local$/",
+          "when": "view == claudeInventory.view && viewItem =~ /^plugin:(on|off):local/",
           "group": "inline@2"
         },
         {
           "command": "claudeInventory.openSource",
-          "when": "view == claudeInventory.view && viewItem =~ /^(mcp|plugin|skill|agent|hook|instructions)/",
+          "when": "view == claudeInventory.view && viewItem =~ /:source$/",
           "group": "navigation@1"
+        },
+        {
+          "command": "claudeInventory.disableMcp",
+          "when": "view == claudeInventory.view && viewItem =~ /^mcp:on/",
+          "group": "toggle@1"
+        },
+        {
+          "command": "claudeInventory.enableMcp",
+          "when": "view == claudeInventory.view && viewItem =~ /^mcp:off/",
+          "group": "toggle@1"
+        },
+        {
+          "command": "claudeInventory.disablePlugin",
+          "when": "view == claudeInventory.view && viewItem =~ /^plugin:on/",
+          "group": "toggle@1"
+        },
+        {
+          "command": "claudeInventory.enablePlugin",
+          "when": "view == claudeInventory.view && viewItem =~ /^plugin:off/",
+          "group": "toggle@1"
+        },
+        {
+          "command": "claudeInventory.resetPlugin",
+          "when": "view == claudeInventory.view && viewItem =~ /^plugin:(on|off):local/",
+          "group": "toggle@2"
         }
       ]
     },
