@@ -72,6 +72,41 @@ async function readDir(dir: string, warnings: string[]): Promise<Dirent[] | unde
   }
 }
 
+interface EntryKind {
+  directory: boolean;
+  file: boolean;
+}
+
+/**
+ * Resolve what a directory entry points at. Claude Code installations often
+ * symlink skills/agents (e.g. `~/.claude/skills/x -> ~/.agents/skills/x`), and
+ * `Dirent.isDirectory()` is false for links, so follows them with `stat`.
+ * Broken links resolve to `undefined` and are skipped silently.
+ */
+async function entryKind(dir: string, entry: Dirent): Promise<EntryKind | undefined> {
+  if (entry.isDirectory()) {
+    return { directory: true, file: false };
+  }
+  if (entry.isFile()) {
+    return { directory: false, file: true };
+  }
+  if (!entry.isSymbolicLink()) {
+    return undefined;
+  }
+  try {
+    const stat = await fsp.stat(path.join(dir, entry.name));
+    if (stat.isDirectory()) {
+      return { directory: true, file: false };
+    }
+    if (stat.isFile()) {
+      return { directory: false, file: true };
+    }
+  } catch {
+    // Broken link: nothing to scan.
+  }
+  return undefined;
+}
+
 function listingTokens(name: string, description: string): number {
   return estimateTokens(`- ${name}: ${description}`);
 }
@@ -200,7 +235,8 @@ async function scanStandaloneSkills(
   }
   const skills: SkillOrAgent[] = [];
   for (const entry of entries) {
-    if (!entry.isDirectory()) {
+    const kind = await entryKind(dir, entry);
+    if (!kind?.directory) {
       continue;
     }
     const file = path.join(dir, entry.name, 'SKILL.md');
@@ -237,7 +273,8 @@ async function scanPluginSkills(
   }
   const skills: SkillOrAgent[] = [];
   for (const entry of entries) {
-    if (!entry.isDirectory()) {
+    const kind = await entryKind(dir, entry);
+    if (!kind?.directory) {
       continue;
     }
     const file = path.join(dir, entry.name, 'SKILL.md');
@@ -267,18 +304,35 @@ async function scanStandaloneAgents(
   scope: Scope,
   out: SkillOrAgent[],
   warnings: string[],
+  visited: Set<string> = new Set(),
 ): Promise<void> {
+  // Symlinked agent directories can loop; only walk each real directory once.
+  let realDir: string;
+  try {
+    realDir = await fsp.realpath(dir);
+  } catch {
+    return;
+  }
+  if (visited.has(realDir)) {
+    return;
+  }
+  visited.add(realDir);
+
   const entries = await readDir(dir, warnings);
   if (!entries) {
     return;
   }
   for (const entry of entries) {
     const file = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      await scanStandaloneAgents(file, scope, out, warnings);
+    const kind = await entryKind(dir, entry);
+    if (!kind) {
       continue;
     }
-    if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.md')) {
+    if (kind.directory) {
+      await scanStandaloneAgents(file, scope, out, warnings, visited);
+      continue;
+    }
+    if (!kind.file || !entry.name.toLowerCase().endsWith('.md')) {
       continue;
     }
     const text = await readText(file);
@@ -348,7 +402,8 @@ async function scanPluginAgents(
     const entries = await readDir(dir, warnings);
     if (entries) {
       for (const entry of entries) {
-        if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.md')) {
+        const kind = await entryKind(dir, entry);
+        if (!kind?.file || !entry.name.toLowerCase().endsWith('.md')) {
           continue;
         }
         const agent = await agentFromFile(path.join(dir, entry.name), pluginName, pluginKey);
@@ -366,14 +421,19 @@ async function scanPluginCommands(
   installPath: string,
   warnings: string[],
 ): Promise<string[]> {
-  const entries = await readDir(path.join(installPath, 'commands'), warnings);
+  const dir = path.join(installPath, 'commands');
+  const entries = await readDir(dir, warnings);
   if (!entries) {
     return [];
   }
-  return entries
-    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.md'))
-    .map((entry) => fileStem(entry.name))
-    .sort(compareStrings);
+  const commands: string[] = [];
+  for (const entry of entries) {
+    const kind = await entryKind(dir, entry);
+    if (kind?.file && entry.name.toLowerCase().endsWith('.md')) {
+      commands.push(fileStem(entry.name));
+    }
+  }
+  return commands.sort(compareStrings);
 }
 
 function pluginEnabled(

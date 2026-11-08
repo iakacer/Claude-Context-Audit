@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import { promises as fsp } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -203,6 +204,52 @@ describe('buildInventory', () => {
       path.join(projectPath, 'CLAUDE.md'),
     ]);
     expect(inventory.instructions[0].estTokens).toBeGreaterThan(0);
+  });
+});
+
+describe('buildInventory symlinked directories', () => {
+  it('follows symlinked skill dirs and survives agent symlink loops', async () => {
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'cci-scan-symlink-'));
+    try {
+      const home = path.join(root, 'home');
+      const project = path.join(root, 'project');
+      const target = path.join(root, 'external', 'brandkit');
+      await fsp.mkdir(target, { recursive: true });
+      await fsp.writeFile(
+        path.join(target, 'SKILL.md'),
+        '---\nname: brandkit\ndescription: Brand kit\n---\n',
+      );
+
+      const skillsDir = path.join(home, '.claude', 'skills');
+      const agentsDir = path.join(home, '.claude', 'agents');
+      await fsp.mkdir(skillsDir, { recursive: true });
+      await fsp.mkdir(agentsDir, { recursive: true });
+      await fsp.mkdir(project, { recursive: true });
+
+      const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+      fs.symlinkSync(target, path.join(skillsDir, 'brandkit'), linkType);
+      try {
+        fs.symlinkSync(path.join(root, 'does-not-exist'), path.join(skillsDir, 'broken'), linkType);
+      } catch {
+        // Some platforms refuse dangling links; the follow test still runs.
+      }
+      try {
+        // A directory that links to itself must not make the agent walk loop.
+        fs.symlinkSync(agentsDir, path.join(agentsDir, 'loop'), linkType);
+      } catch {
+        // Junction creation can be restricted; not essential for this test.
+      }
+
+      const inventory = await buildInventory(project, ClaudePaths(home));
+
+      const brandkit = inventory.skills.find((entry) => entry.name === 'brandkit');
+      expect(brandkit).toBeDefined();
+      expect(brandkit?.file).toBe(path.join(skillsDir, 'brandkit', 'SKILL.md'));
+      expect(inventory.skills.some((entry) => entry.name === 'broken')).toBe(false);
+      expect(inventory.warnings).toEqual([]);
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
   });
 });
 
