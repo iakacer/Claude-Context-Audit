@@ -6,3 +6,6 @@ dist/cli.js
 SPEC.md
 esbuild.mjs
 .tmp-probe
+*.vsix
+.gitignore
+tsconfig.json

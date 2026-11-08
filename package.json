@@ -19,7 +19,7 @@
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "package": "vsce package --no-dependencies"
+    "package": "vsce package --no-dependencies --skip-license --allow-missing-repository --out claude-context-inventory.vsix"
   },
   "contributes": {
     "viewsContainers": {
@@ -84,7 +84,8 @@
       {
         "command": "claudeInventory.openLatestTranscript",
         "title": "Open Latest Transcript",
-        "category": "Claude Context Inventory"
+        "category": "Claude Context Inventory",
+        "icon": "$(history)"
       }
     ],
     "menus": {
