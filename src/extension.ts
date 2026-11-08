@@ -34,8 +34,6 @@ function activateInner(context: vscode.ExtensionContext): void {
   const treeView = vscode.window.createTreeView('claudeInventory.view', {
     treeDataProvider: provider,
   });
-  treeView.message =
-    'Badges: U user · P project · L local · PG plugin · C claude.ai · B built-in';
   context.subscriptions.push(
     treeView,
     vscode.window.registerFileDecorationProvider(new InventoryDecorations()),
