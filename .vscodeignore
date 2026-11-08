@@ -1,0 +1,8 @@
+src/**
+test/**
+node_modules/**
+dist/cli.js
+**/*.map
+SPEC.md
+esbuild.mjs
+.tmp-probe

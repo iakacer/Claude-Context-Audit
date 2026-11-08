@@ -1,0 +1,151 @@
+{
+  "name": "claude-context-inventory",
+  "displayName": "Claude Context Inventory",
+  "description": "Shows what Claude Code loads into context for the current workspace, its token cost and recent usage.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "package": "vsce package --no-dependencies"
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "claudeInventory",
+          "title": "Claude Context Inventory",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "claudeInventory": [
+        {
+          "id": "claudeInventory.view",
+          "name": "Inventory"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "claudeInventory.refresh",
+        "title": "Refresh",
+        "category": "Claude Context Inventory",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "claudeInventory.disableMcp",
+        "title": "Disable MCP Server",
+        "category": "Claude Context Inventory"
+      },
+      {
+        "command": "claudeInventory.enableMcp",
+        "title": "Enable MCP Server",
+        "category": "Claude Context Inventory"
+      },
+      {
+        "command": "claudeInventory.disablePlugin",
+        "title": "Disable Plugin",
+        "category": "Claude Context Inventory"
+      },
+      {
+        "command": "claudeInventory.enablePlugin",
+        "title": "Enable Plugin",
+        "category": "Claude Context Inventory"
+      },
+      {
+        "command": "claudeInventory.resetPlugin",
+        "title": "Reset Plugin Override (Use Inherited)",
+        "category": "Claude Context Inventory"
+      },
+      {
+        "command": "claudeInventory.openSource",
+        "title": "Open Source File",
+        "category": "Claude Context Inventory"
+      },
+      {
+        "command": "claudeInventory.openLatestTranscript",
+        "title": "Open Latest Transcript",
+        "category": "Claude Context Inventory"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "claudeInventory.refresh",
+          "when": "view == claudeInventory.view",
+          "group": "navigation@1"
+        },
+        {
+          "command": "claudeInventory.openLatestTranscript",
+          "when": "view == claudeInventory.view",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "claudeInventory.disableMcp",
+          "when": "view == claudeInventory.view && viewItem == mcp:on",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudeInventory.enableMcp",
+          "when": "view == claudeInventory.view && viewItem == mcp:off",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudeInventory.disablePlugin",
+          "when": "view == claudeInventory.view && viewItem =~ /^plugin:on/",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudeInventory.enablePlugin",
+          "when": "view == claudeInventory.view && viewItem =~ /^plugin:off/",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudeInventory.resetPlugin",
+          "when": "view == claudeInventory.view && viewItem =~ /^plugin:(on|off):local$/",
+          "group": "inline@2"
+        },
+        {
+          "command": "claudeInventory.openSource",
+          "when": "view == claudeInventory.view && viewItem =~ /^(mcp|plugin|skill|agent|hook|instructions)/",
+          "group": "navigation@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Claude Context Inventory",
+      "properties": {
+        "claudeInventory.usageWindowDays": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "description": "Number of days of Claude Code sessions to scan for usage."
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^2.26.0",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}
