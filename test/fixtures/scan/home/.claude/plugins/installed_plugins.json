@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "plugins": {
+    "vercel-plugin@vercel": [
+      {
+        "scope": "user",
+        "installPath": "plugins/vercel-plugin",
+        "version": "1.0.0"
+      }
+    ],
+    "ads@mk": [
+      {
+        "scope": "user",
+        "installPath": "plugins/ads",
+        "version": "0.3.0"
+      }
+    ],
+    "off@mk": [
+      {
+        "scope": "user",
+        "installPath": "plugins/off",
+        "version": "0.1.0"
+      }
+    ]
+  }
+}

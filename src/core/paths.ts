@@ -29,9 +29,14 @@ export function normKey(projectPath: string): string {
   return projectPath.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 }
 
+/** Strip trailing path separators (`/` or `\`) from a project path. */
+export function stripTrailingSeparators(projectPath: string): string {
+  return projectPath.replace(/[\\/]+$/, '');
+}
+
 /** Transcript directory name for a project path. */
 export function slug(projectPath: string): string {
-  return projectPath.replace(/[^A-Za-z0-9]/g, '-');
+  return stripTrailingSeparators(projectPath).replace(/[^A-Za-z0-9]/g, '-');
 }
 
 /** Find the transcript directory for a project, matching its slug case-insensitively. */

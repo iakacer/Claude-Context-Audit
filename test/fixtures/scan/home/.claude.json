@@ -1,0 +1,30 @@
+{
+  "mcpServers": {
+    "drawio": {
+      "command": "drawio"
+    },
+    "blender": {
+      "command": "blender"
+    }
+  },
+  "claudeAiMcpEverConnected": [
+    "claude.ai Gmail"
+  ],
+  "projects": {
+    "D:/Work/demo": {
+      "disabledMcpServers": [
+        "drawio"
+      ],
+      "mcpServers": {
+        "localsrv": {
+          "command": "localsrv"
+        }
+      }
+    },
+    "d:\\Work\\demo": {
+      "disabledMcpServers": [
+        "plugin:vercel:vercel"
+      ]
+    }
+  }
+}

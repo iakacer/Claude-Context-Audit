@@ -1,0 +1,6 @@
+{
+  "name": "vercel",
+  "agents": [
+    "./agents/a1.md"
+  ]
+}
